@@ -163,7 +163,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     }
 
     private void UpdatePanel() => _panel.SetReading(_latestReading,
-        _latestReading.Percent ?? (_latestReading.ReceiverConnected ? _lastKnownPercent : null), _refreshing);
+        ShownPercent(_latestReading), _refreshing);
 
     private async Task RefreshAsync()
     {
@@ -225,6 +225,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
             $"Percent={next.Percent?.ToString() ?? "-"} Cable={(next.OnCable ? "yes" : "no")} Rev={next.FirmwareRevision} Detail=\"{next.Detail}\"");
     }
 
+    /// <summary>The live percent, else the last known one while the mouse is still reachable (receiver or cable).</summary>
+    private int? ShownPercent(BatteryReading reading) =>
+        reading.Percent ?? (reading.ReceiverConnected || reading.OnCable ? _lastKnownPercent : null);
+
     private void ApplyReading(BatteryReading reading)
     {
         _latestReading = reading;
@@ -234,7 +238,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             _lastKnownPercent = reading.Percent;
         }
 
-        var shownPercent = reading.Percent ?? (reading.ReceiverConnected ? _lastKnownPercent : null);
+        var shownPercent = ShownPercent(reading);
         _statusItem.Text = TrayText.Menu(reading, shownPercent);
         _notifyIcon.Text = TrayText.Tooltip(reading, shownPercent);
 

@@ -44,10 +44,15 @@ public class TrayTextTests
 public class ReaderOrderTests
 {
     [Fact]
-    public void PollsReceiversBeforeTheWiredMouse()
+    public void NeverPollsTheWiredMouse()
     {
+        // Polling the mouse over the cable makes its buttons stop clicking.
         var devices = new[] { ("cable", true), ("dongle", false), ("dongle2", false) };
-        var order = Aj179BatteryReader.OrderForPolling(devices, d => d.Item2).Select(d => d.Item1);
-        Assert.Equal(["dongle", "dongle2", "cable"], order);
+        var targets = Aj179BatteryReader.PollTargets(devices, d => d.Item2).Select(d => d.Item1);
+        Assert.Equal(["dongle", "dongle2"], targets);
     }
+
+    [Fact]
+    public void CableAloneHasNothingToPoll() =>
+        Assert.Empty(Aj179BatteryReader.PollTargets(new[] { ("cable", true) }, d => d.Item2));
 }

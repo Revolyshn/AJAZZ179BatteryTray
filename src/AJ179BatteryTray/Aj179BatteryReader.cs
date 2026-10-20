@@ -17,7 +17,6 @@ internal sealed class Aj179BatteryReader
         {
             devices = DeviceList.Local.GetHidDevices(VendorId)
                 .Where(d => SupportedProductIds.Contains(d.ProductID))
-                .Where(d => d.GetMaxFeatureReportLength() >= BatteryProtocol.ReportLength)
                 .Select(d => (d, IsWiredMouse(d)))
                 .ToList();
         }
@@ -26,16 +25,23 @@ internal sealed class Aj179BatteryReader
             return BatteryReading.Disconnected($"Ошибка поиска HID: {ex.Message}");
         }
 
-        if (devices.Count == 0)
+        var onCable = devices.Any(d => d.Wired);
+        var receivers = PollTargets(devices, d => d.Wired)
+            .Select(d => d.Device)
+            .Where(d => d.GetMaxFeatureReportLength() >= BatteryProtocol.ReportLength)
+            .ToList();
+
+        if (receivers.Count == 0)
         {
-            return BatteryReading.Disconnected();
+            return onCable
+                ? new(false, false, null, "—", "Мышь подключена кабелем; по кабелю заряд не передаётся", OnCable: true)
+                : BatteryReading.Disconnected();
         }
 
-        var onCable = devices.Any(d => d.Wired);
         BatteryReading? fallback = null;
-        foreach (var (device, _) in OrderForPolling(devices, d => d.Wired))
+        foreach (var receiver in receivers)
         {
-            var reading = Poll(device) with { OnCable = onCable };
+            var reading = Poll(receiver) with { OnCable = onCable };
             if (reading.Percent is not null) return reading;
             fallback ??= reading;
         }
@@ -43,11 +49,12 @@ internal sealed class Aj179BatteryReader
     }
 
     /// <summary>
-    /// Receivers first: over the cable the mouse itself has not answered the status poll
-    /// in testing, while a receiver plugged in at the same time still may.
+    /// Only receivers are polled. The mouse connected by cable is never sent the 0xF7 status
+    /// poll: its firmware stops registering button clicks while it receives it (movement still
+    /// works), and it does not report the charge over the cable anyway.
     /// </summary>
-    internal static IEnumerable<T> OrderForPolling<T>(IEnumerable<T> devices, Func<T, bool> isWired) =>
-        devices.OrderBy(isWired);
+    internal static IEnumerable<T> PollTargets<T>(IEnumerable<T> devices, Func<T, bool> isWired) =>
+        devices.Where(d => !isWired(d));
 
     private static BatteryReading Poll(HidDevice device)
     {
