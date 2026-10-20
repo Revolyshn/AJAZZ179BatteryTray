@@ -1,0 +1,11 @@
+bin/
+obj/
+artifacts/
+.vs/
+*.user
+TestResults/
+
+# Deployed build and source archive kept next to the repo root
+/AJ179BatteryTray.exe
+/AJ179BatteryTray-source.zip
+/_staging/
