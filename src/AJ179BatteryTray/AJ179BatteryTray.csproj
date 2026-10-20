@@ -8,9 +8,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PublishSingleFile>true</PublishSingleFile>
-    <SelfContained>true</SelfContained>
+    <!-- Default build carries its own runtime (~50 MB). Pass -p:SelfContained=false for a ~1 MB
+         EXE that needs the .NET 10 Desktop Runtime (x64) installed. -->
+    <SelfContained Condition="'$(SelfContained)' == ''">true</SelfContained>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <!-- The SDK supports single-file compression only for self-contained apps. -->
+    <EnableCompressionInSingleFile Condition="'$(SelfContained)' == 'true'">true</EnableCompressionInSingleFile>
     <!-- The UI is Russian; skip framework satellite resources for the other 12 languages. -->
     <SatelliteResourceLanguages>ru;en</SatelliteResourceLanguages>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>

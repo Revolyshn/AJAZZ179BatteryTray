@@ -69,22 +69,61 @@ Liquid Glass стилизован градиентами, бликами и ск
 ## Структура
 
 - `src/AJ179BatteryTray`: приложение (WinForms, .NET 10, HidSharp).
-- `tests/AJ179BatteryTray.Tests`: xUnit-тесты разбора протокола и автозапуска.
+- `tests/AJ179BatteryTray.Tests`: xUnit-тесты протокола, автозапуска, опроса, настроек и значка.
 - `art/icon`: SVG-исходники значка приложения и скрипт `build-icon.ps1`
   (нужен ImageMagick 7), который собирает `Assets/app.ico`.
+- `.github/workflows/build.yml`: CI на GitHub Actions.
+- `CHANGELOG.md`: изменения по версиям; из него берётся текст релиза.
 
 ## Сборка
 
-Требуется .NET 10 SDK:
+Требуется .NET 10 SDK (версия закреплена в `global.json`):
 
 ```powershell
 ./publish.ps1
 ```
 
-Скрипт прогоняет тесты, публикует self-contained single-file EXE в
-`artifacts/publish` и копирует его в корень репозитория. Если программа запущена, её EXE
-переименовывается в `AJ179BatteryTray.old.exe`: выйдите из неё через меню и запустите снова. Только тесты:
+Скрипт прогоняет тесты, публикует single-file EXE в `artifacts/publish/<вариант>` и
+копирует его в корень репозитория. Если программа запущена, её EXE переименовывается
+в `AJ179BatteryTray.old.exe`: выйдите из неё через меню и запустите снова.
+
+Варианты:
+
+| Вариант | Размер | Требования |
+|---|---|---|
+| `SelfContained` (по умолчанию) | ~50 МБ | любая Windows 10/11 x64 |
+| `FrameworkDependent` | ~1,3 МБ | установлен .NET 10 Desktop Runtime x64 |
+
+```powershell
+./publish.ps1 -Variant FrameworkDependent
+```
+
+Без рантайма компактный EXE при запуске покажет окно Windows со ссылкой на загрузку
+.NET Desktop Runtime. Только тесты:
 
 ```powershell
 dotnet test AJ179BatteryTray.slnx
 ```
+
+## CI и релизы
+
+`build.yml` на каждый push в `main` и pull request прогоняет тесты на `windows-latest` и
+собирает оба варианта в артефакт `AJ179BatteryTray` (EXE, лицензия шрифта, `SHA256SUMS.txt`).
+Тег `vX.Y.Z` дополнительно проверяет, что он совпадает с `<Version>` в csproj, и создаёт
+GitHub Release с текстом из раздела `## X.Y.Z` в `CHANGELOG.md`.
+
+Порядок выпуска: поднять `<Version>`, добавить раздел в `CHANGELOG.md`, закоммитить,
+`git tag vX.Y.Z`, `git push --follow-tags`.
+
+## Подпись EXE
+
+EXE не подписан, поэтому при первом запуске скачанного файла SmartScreen может показать
+«Windows защитила ваш компьютер» («Подробнее» → «Выполнить в любом случае»). Решение:
+не подписывать.
+
+- Самоподписанный сертификат SmartScreen не убирает: ему доверяет только машина, где
+  сертификат вручную добавлен в доверенные.
+- Убрать предупреждение может только платная подпись от доверенного центра (OV/EV-сертификат
+  или облачная подпись Microsoft); для личной утилиты это не окупается.
+- Целостность скачанного файла можно проверить по `SHA256SUMS.txt` из релиза:
+  `Get-FileHash AJ179BatteryTray.exe`.
