@@ -5,13 +5,18 @@ namespace AJ179BatteryTray;
 
 internal sealed class BatteryPanel : Form
 {
+    // Layout is drawn in a 400 x 494 design space and scaled to the DPI-adjusted client size.
+    private const int DesignWidth = 400;
+    private const int DesignHeight = 494;
+    private const int ButtonTop = 412;
+    private const int FooterTop = 473;
+
     private readonly Image _art;
     private readonly GlassButton _refresh;
     private readonly GlassButton _close;
     private readonly Dictionary<(float Size, FontStyle Style), Font> _fonts = new();
     private BatteryReading _reading = BatteryReading.Disconnected("Ожидание первого опроса");
     private int? _percent;
-    private DateTime? _checkedAt;
     private bool _busy;
     public event EventHandler? RefreshRequested;
     public DateTime LastHiddenAt { get; private set; }
@@ -22,7 +27,7 @@ internal sealed class BatteryPanel : Form
         AccessibleName = Text;
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoScaleDimensions = new SizeF(96, 96);
-        ClientSize = new Size(400, 590);
+        ClientSize = new Size(DesignWidth, DesignHeight);
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.Manual;
@@ -33,7 +38,7 @@ internal sealed class BatteryPanel : Form
         using var source = Image.FromStream(stream);
         _art = GlassBackdrop.Create(source);
 
-        _refresh = CreateButton("Обновить сейчас", new Rectangle(24, 508, 352, 48));
+        _refresh = CreateButton("Обновить сейчас", new Rectangle(24, ButtonTop, 352, 48));
         _refresh.Click += (_, _) => RefreshRequested?.Invoke(this, EventArgs.Empty);
         _close = CreateButton("×", new Rectangle(332, 16, 44, 44));
         _close.AccessibleName = "Закрыть панель";
@@ -139,11 +144,10 @@ internal sealed class BatteryPanel : Form
         protected override bool IsInputKey(Keys keyData) => keyData is Keys.Enter or Keys.Space || base.IsInputKey(keyData);
     }
 
-    public void SetReading(BatteryReading reading, int? shownPercent, DateTime? checkedAt, bool busy)
+    public void SetReading(BatteryReading reading, int? shownPercent, bool busy)
     {
         _reading = reading;
         _percent = shownPercent;
-        _checkedAt = checkedAt;
         _busy = busy;
         _refresh.Enabled = !busy;
         _refresh.Text = busy ? "Проверяем заряд…" : "Обновить сейчас";
@@ -184,8 +188,8 @@ internal sealed class BatteryPanel : Form
         previous?.Dispose();
         if (_refresh is not null)
         {
-            var sx = ClientSize.Width / 400f; var sy = ClientSize.Height / 590f;
-            _refresh.Bounds = new Rectangle((int)(24*sx),(int)(508*sy),(int)(352*sx),(int)(48*sy));
+            var sx = ClientSize.Width / (float)DesignWidth; var sy = ClientSize.Height / (float)DesignHeight;
+            _refresh.Bounds = new Rectangle((int)(24*sx),(int)(ButtonTop*sy),(int)(352*sx),(int)(48*sy));
             _close.Bounds = new Rectangle((int)(332*sx),(int)(16*sy),(int)(44*sx),(int)(44*sy));
         }
     }
@@ -193,9 +197,9 @@ internal sealed class BatteryPanel : Form
     private void PaintBackdrop(Graphics graphics)
     {
         var state = graphics.Save();
-        graphics.ScaleTransform(ClientSize.Width / 400f, ClientSize.Height / 590f);
+        graphics.ScaleTransform(ClientSize.Width / (float)DesignWidth, ClientSize.Height / (float)DesignHeight);
         graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
-        if (_art is not null) graphics.DrawImage(_art, new RectangleF(-4,-4,408,598));
+        if (_art is not null) graphics.DrawImage(_art, new RectangleF(-4, -4, DesignWidth + 8, DesignHeight + 8));
         graphics.Restore(state);
     }
 
@@ -204,11 +208,11 @@ internal sealed class BatteryPanel : Form
         base.OnPaint(e);
         var g = e.Graphics;
         PaintBackdrop(g);
-        g.ScaleTransform(ClientSize.Width / 400f, ClientSize.Height / 590f);
+        g.ScaleTransform(ClientSize.Width / (float)DesignWidth, ClientSize.Height / (float)DesignHeight);
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
         using var border = new Pen(Color.FromArgb(115, 235, 238, 246), 1);
-        using var outer = Round(new RectangleF(0.8f, 0.8f, 398.4f, 588.4f), 24);
+        using var outer = Round(new RectangleF(0.8f, 0.8f, DesignWidth - 1.6f, DesignHeight - 1.6f), 24);
         g.DrawPath(border, outer);
 
         Label(g, "A J A Z Z", 24, 23, 14, FontStyle.Bold);
@@ -249,15 +253,8 @@ internal sealed class BatteryPanel : Form
             g.Restore(saved);
         }
         g.DrawPath(border, trackPath);
-        Label(g, _percent.HasValue ? "Мониторинг заряда" : "Ожидаем данные мыши", 26, 406, 11, FontStyle.Bold);
-        var detail = _percent.HasValue
-            ? (_reading.MouseOnline ? "Автообновление каждые 5 секунд." : "Показан последний заряд.\nРазбудите мышь для обновления.")
-            : (_reading.ReceiverConnected ? "Пошевелите мышью в режиме 2.4G.\nОжидаем ответ приёмника." : "Подключите приёмник и включите мышь.\nЗаряд проверится автоматически.");
-        using (var brush = new SolidBrush(Color.FromArgb(193, 197, 207)))
-            g.DrawString(detail, GetFont(8.5f, FontStyle.Regular), brush, new RectangleF(26, 434, 347, 44));
-        Label(g, _busy ? "Обновление…" : _checkedAt.HasValue ? $"Проверено {_checkedAt:HH:mm:ss}  ·  5 с" : "Ожидание первого опроса", 26, 480, 7.5f, FontStyle.Regular, 163);
-        Label(g, "AJ179 / SILVER EDITION", 26, 569, 7, FontStyle.Regular, 145);
-        Label(g, "ESC · ЗАКРЫТЬ", 278, 569, 7, FontStyle.Regular, 145);
+        Label(g, "AJ179 / SILVER EDITION", 26, FooterTop, 7, FontStyle.Regular, 145);
+        Label(g, "ESC · ЗАКРЫТЬ", 278, FooterTop, 7, FontStyle.Regular, 145);
     }
 
     private string StatusText() => !_reading.ReceiverConnected ? "Приёмник не подключён" :

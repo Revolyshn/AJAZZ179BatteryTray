@@ -163,7 +163,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     }
 
     private void UpdatePanel() => _panel.SetReading(_latestReading,
-        _latestReading.Percent ?? (_latestReading.ReceiverConnected ? _lastKnownPercent : null), _checkedAt, _refreshing);
+        _latestReading.Percent ?? (_latestReading.ReceiverConnected ? _lastKnownPercent : null), _refreshing);
 
     private async Task RefreshAsync()
     {

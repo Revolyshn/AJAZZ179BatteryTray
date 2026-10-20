@@ -20,7 +20,7 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <Version>1.3.0</Version>
+    <Version>1.3.1</Version>
     <Product>AJ179 Battery Tray</Product>
     <AssemblyTitle>AJ179 Battery Tray</AssemblyTitle>
     <Description>Заряд AJAZZ AJ179 PRO в области уведомлений Windows (неофициальная утилита)</Description>
