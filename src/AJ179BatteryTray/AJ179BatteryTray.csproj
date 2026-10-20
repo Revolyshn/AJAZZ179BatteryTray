@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -17,7 +17,7 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <Product>AJ179 Battery Tray</Product>
     <AssemblyTitle>AJ179 Battery Tray</AssemblyTitle>
     <Description>Заряд AJAZZ AJ179 PRO в области уведомлений Windows (неофициальная утилита)</Description>

@@ -9,9 +9,15 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly ToolStripMenuItem _statusItem;
     private readonly ToolStripMenuItem _autostartItem;
     private readonly System.Windows.Forms.Timer _timer;
+    // One-shot timer for event-driven polls (device change, resume); restarting it debounces bursts.
+    private readonly System.Windows.Forms.Timer _soonTimer;
+    private readonly SynchronizationContext _uiContext;
+    private readonly EventHandler<HidSharp.DeviceListChangedEventArgs> _deviceListChanged;
     private Icon? _currentIcon;
     private int? _currentIconPercent;
     private bool _refreshing;
+    private bool _refreshPending;
+    private bool _firstReadingLogged;
     private bool _lowBatteryNotified;
     private int? _lastKnownPercent;
     private readonly BatteryPanel _panel;
@@ -23,7 +29,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         _reader = reader;
         _panel = new BatteryPanel();
+        // Creating the first Control installs the WinForms synchronization context.
+        _uiContext = SynchronizationContext.Current
+            ?? throw new InvalidOperationException("WinForms synchronization context is not installed.");
         _panel.RefreshRequested += async (_, _) => await RefreshAsync();
+        _panel.VisibleChanged += (_, _) => OnPanelVisibleChanged();
         _statusItem = new ToolStripMenuItem("AJ179 PRO: чтение…") { Enabled = false };
         _autostartItem = new ToolStripMenuItem(AutostartText);
         _autostartItem.Click += OnAutostartClick;
@@ -32,11 +42,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         var refreshItem = new ToolStripMenuItem("Обновить сейчас");
         refreshItem.Click += async (_, _) => await RefreshAsync();
+        var logItem = new ToolStripMenuItem("Открыть журнал");
+        logItem.Click += (_, _) => OpenLog();
         var exitItem = new ToolStripMenuItem("Выход");
         exitItem.Click += (_, _) => ExitThread();
 
         var menu = new ContextMenuStrip();
-        menu.Items.AddRange([_statusItem, new ToolStripSeparator(), refreshItem, _autostartItem,
+        menu.Items.AddRange([_statusItem, new ToolStripSeparator(), refreshItem, _autostartItem, logItem,
             new ToolStripSeparator(), exitItem]);
         // Another copy may have changed the Run entry since the menu was last shown.
         menu.Opening += (_, _) => UpdateAutostartItem();
@@ -54,12 +66,77 @@ internal sealed class TrayApplicationContext : ApplicationContext
             if (e.Button == MouseButtons.Left) TogglePanel();
         };
 
-        _timer = new System.Windows.Forms.Timer { Interval = 5_000, Enabled = true };
+        _timer = new System.Windows.Forms.Timer { Interval = (int)PollingPolicy.WaitingForTelemetry.TotalMilliseconds, Enabled = true };
         _timer.Tick += async (_, _) => await RefreshAsync();
+        _soonTimer = new System.Windows.Forms.Timer();
+        _soonTimer.Tick += async (_, _) => { _soonTimer.Stop(); await RefreshAsync(); };
+
+        // Both events arrive on background threads.
+        _deviceListChanged = (_, _) =>
+        {
+            AppLog.Info("Device list changed");
+            Post(() => RefreshSoon(PollingPolicy.DeviceChangeSettle));
+        };
+        HidSharp.DeviceList.Local.Changed += _deviceListChanged;
+        Microsoft.Win32.SystemEvents.PowerModeChanged += OnPowerModeChanged;
+
+        AppLog.Info($"Start {Application.ProductVersion}, {Environment.ProcessPath}");
         // First async read starts on the established WinForms message loop.
         EventHandler? start = null;
         start = async (_, _) => { Application.Idle -= start; await RefreshAsync(); };
         Application.Idle += start;
+    }
+
+    private void Post(Action action)
+    {
+        try
+        {
+            _uiContext.Post(_ => { if (!_exiting) action(); }, null);
+        }
+        catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException)
+        {
+            // The message loop is already shutting down.
+        }
+    }
+
+    private void OnPowerModeChanged(object? sender, Microsoft.Win32.PowerModeChangedEventArgs e)
+    {
+        if (e.Mode == Microsoft.Win32.PowerModes.Suspend)
+        {
+            AppLog.Info("System suspend");
+        }
+        else if (e.Mode == Microsoft.Win32.PowerModes.Resume)
+        {
+            AppLog.Info("System resume");
+            Post(() => RefreshSoon(PollingPolicy.ResumeSettle));
+        }
+    }
+
+    /// <summary>Polls after <paramref name="delay"/>; repeated requests within the delay coalesce.</summary>
+    private void RefreshSoon(TimeSpan delay)
+    {
+        _soonTimer.Stop();
+        _soonTimer.Interval = Math.Max(1, (int)delay.TotalMilliseconds);
+        _soonTimer.Start();
+    }
+
+    private void OnPanelVisibleChanged()
+    {
+        if (_exiting) return;
+        // Opening the panel shows fresh data right away when the last poll is older than the panel interval.
+        if (_panel.Visible && (_checkedAt is null || DateTime.Now - _checkedAt.Value >= PollingPolicy.PanelOpen))
+        {
+            RefreshSoon(TimeSpan.Zero);
+        }
+        ScheduleNextPoll();
+    }
+
+    private void ScheduleNextPoll()
+    {
+        var delay = PollingPolicy.NextDelay(_panel.Visible, _latestReading.ReceiverConnected, _lastKnownPercent is not null);
+        var interval = (int)delay.TotalMilliseconds;
+        // Setting Interval restarts the timer, so leave it alone when nothing changed.
+        if (_timer.Interval != interval) _timer.Interval = interval;
     }
 
     public void TogglePanel()
@@ -86,8 +163,15 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private async Task RefreshAsync()
     {
-        if (_refreshing || _exiting) return;
+        if (_exiting) return;
+        if (_refreshing)
+        {
+            // A device change or resume during a poll must not be lost: poll again once this one ends.
+            _refreshPending = true;
+            return;
+        }
         _refreshing = true;
+        _refreshPending = false;
         UpdatePanel();
         BatteryReading reading;
         try
@@ -96,18 +180,44 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
         catch (Exception ex)
         {
+            AppLog.Error("Read failed", ex);
             reading = BatteryReading.Disconnected($"Не удалось прочитать заряд: {ex.Message}");
         }
 
         try
         {
-            if (!_exiting) ApplyReading(reading);
+            if (!_exiting)
+            {
+                LogTransition(_latestReading, reading);
+                ApplyReading(reading);
+            }
         }
         finally
         {
             _refreshing = false;
-            if (!_exiting) UpdatePanel();
+            if (!_exiting)
+            {
+                UpdatePanel();
+                ScheduleNextPoll();
+                if (_refreshPending) RefreshSoon(TimeSpan.Zero);
+            }
         }
+    }
+
+    private void LogTransition(BatteryReading previous, BatteryReading next)
+    {
+        // Log only changes: a steady state produces no lines however often it is polled.
+        if (_firstReadingLogged
+            && previous.ReceiverConnected == next.ReceiverConnected
+            && previous.MouseOnline == next.MouseOnline
+            && previous.Percent == next.Percent
+            && previous.Detail == next.Detail)
+        {
+            return;
+        }
+        _firstReadingLogged = true;
+        AppLog.Info($"Receiver={(next.ReceiverConnected ? "on" : "off")} Mouse={(next.MouseOnline ? "online" : "offline")} " +
+            $"Percent={next.Percent?.ToString() ?? "-"} Rev={next.FirmwareRevision} Detail=\"{next.Detail}\"");
     }
 
     private void ApplyReading(BatteryReading reading)
@@ -209,12 +319,32 @@ internal sealed class TrayApplicationContext : ApplicationContext
         UpdateAutostartItem();
     }
 
+    private static void OpenLog()
+    {
+        try
+        {
+            AppLog.Info("Log opened from the tray menu");
+            System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{AppLog.FilePath}\"");
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Не удалось открыть журнал:\n{ex.Message}\n\n{AppLog.FilePath}", "AJ179 Battery Tray",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+    }
+
     protected override void ExitThreadCore()
     {
         _exiting = true;
+        AppLog.Info("Exit");
+        // Static events would otherwise keep this context alive and call into disposed controls.
+        HidSharp.DeviceList.Local.Changed -= _deviceListChanged;
+        Microsoft.Win32.SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         _panel.Dispose();
         _timer.Stop();
         _timer.Dispose();
+        _soonTimer.Stop();
+        _soonTimer.Dispose();
         _notifyIcon.Visible = false;
         _notifyIcon.Dispose();
         _currentIcon?.Dispose();
