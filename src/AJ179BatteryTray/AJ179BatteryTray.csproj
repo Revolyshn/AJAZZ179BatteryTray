@@ -11,6 +11,18 @@
     <SelfContained>true</SelfContained>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <!-- The UI is Russian; skip framework satellite resources for the other 12 languages. -->
+    <SatelliteResourceLanguages>ru;en</SatelliteResourceLanguages>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Version>1.1.0</Version>
+    <Product>AJ179 Battery Tray</Product>
+    <AssemblyTitle>AJ179 Battery Tray</AssemblyTitle>
+    <Description>Заряд AJAZZ AJ179 PRO в области уведомлений Windows (неофициальная утилита)</Description>
+    <Company>AJ179BatteryTray</Company>
+    <Copyright>Неофициальная утилита. JetBrains Mono: SIL OFL 1.1</Copyright>
   </PropertyGroup>
 
   <ItemGroup>
@@ -18,6 +30,7 @@
     <EmbeddedResource Include="Assets\JetBrainsMono-*.ttf" />
     <EmbeddedResource Include="Assets\JetBrainsMono-OFL.txt" />
     <PackageReference Include="HidSharp" Version="2.6.4" />
+    <InternalsVisibleTo Include="AJ179BatteryTray.Tests" />
   </ItemGroup>
 
 </Project>

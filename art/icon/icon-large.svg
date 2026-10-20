@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4A4F5B"/>
+      <stop offset="1" stop-color="#15171C"/>
+    </linearGradient>
+    <linearGradient id="silver" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#9AA1B2"/>
+    </linearGradient>
+    <linearGradient id="level" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FBFCFF"/>
+      <stop offset="1" stop-color="#858C9D"/>
+    </linearGradient>
+    <clipPath id="body">
+      <rect x="82" y="46" width="92" height="164" rx="46"/>
+    </clipPath>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#tile)"/>
+  <rect x="8.75" y="8.75" width="238.5" height="238.5" rx="55.25" fill="none" stroke="#EBEEF6" stroke-opacity="0.35" stroke-width="1.5"/>
+  <rect x="82" y="46" width="92" height="164" rx="46" fill="#090A0E" fill-opacity="0.55"/>
+  <g clip-path="url(#body)">
+    <rect x="82" y="122" width="92" height="88" fill="url(#level)"/>
+    <rect x="82" y="122" width="92" height="4" fill="#FFFFFF" fill-opacity="0.9"/>
+  </g>
+  <rect x="82" y="46" width="92" height="164" rx="46" fill="none" stroke="url(#silver)" stroke-width="11"/>
+  <line x1="128" y1="46" x2="128" y2="98" stroke="url(#silver)" stroke-width="7"/>
+  <rect x="120" y="64" width="16" height="28" rx="8" fill="#FFFFFF"/>
+</svg>
