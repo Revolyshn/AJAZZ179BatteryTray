@@ -14,11 +14,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly SynchronizationContext _uiContext;
     private readonly EventHandler<HidSharp.DeviceListChangedEventArgs> _deviceListChanged;
     private Icon? _currentIcon;
-    private int? _currentIconPercent;
+    private int? _iconPercent;
+    private (int? Percent, int Size, bool Light) _iconKey;
     private bool _refreshing;
     private bool _refreshPending;
     private bool _firstReadingLogged;
-    private bool _lowBatteryNotified;
+    private AppSettings _settings;
+    private readonly LowBatteryAlert _lowBattery;
     private int? _lastKnownPercent;
     private readonly BatteryPanel _panel;
     private BatteryReading _latestReading = BatteryReading.Disconnected();
@@ -28,6 +30,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
     public TrayApplicationContext(Aj179BatteryReader reader)
     {
         _reader = reader;
+        _settings = AppSettings.Load();
+        _lowBattery = new LowBatteryAlert(_settings.LowBatteryThreshold);
         _panel = new BatteryPanel();
         // Creating the first Control installs the WinForms synchronization context.
         _uiContext = SynchronizationContext.Current
@@ -48,19 +52,18 @@ internal sealed class TrayApplicationContext : ApplicationContext
         exitItem.Click += (_, _) => ExitThread();
 
         var menu = new ContextMenuStrip();
-        menu.Items.AddRange([_statusItem, new ToolStripSeparator(), refreshItem, _autostartItem, logItem,
-            new ToolStripSeparator(), exitItem]);
+        menu.Items.AddRange([_statusItem, new ToolStripSeparator(), refreshItem, CreateLowBatteryMenu(),
+            _autostartItem, logItem, new ToolStripSeparator(), exitItem]);
         // Another copy may have changed the Run entry since the menu was last shown.
         menu.Opening += (_, _) => UpdateAutostartItem();
 
-        _currentIcon = TrayIconRenderer.Create(null, false, false);
         _notifyIcon = new NotifyIcon
         {
-            Icon = _currentIcon,
             Text = "AJ179 PRO — чтение заряда…",
-            ContextMenuStrip = menu,
-            Visible = true
+            ContextMenuStrip = menu
         };
+        UpdateIcon();
+        _notifyIcon.Visible = true;
         _notifyIcon.MouseClick += (_, e) =>
         {
             if (e.Button == MouseButtons.Left) TogglePanel();
@@ -79,6 +82,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         };
         HidSharp.DeviceList.Local.Changed += _deviceListChanged;
         Microsoft.Win32.SystemEvents.PowerModeChanged += OnPowerModeChanged;
+        Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
 
         AppLog.Info($"Start {Application.ProductVersion}, {Environment.ProcessPath}");
         // First async read starts on the established WinForms message loop.
@@ -240,26 +244,84 @@ internal sealed class TrayApplicationContext : ApplicationContext
             : $"AJ179 PRO: {shownPercent}%{suffix}";
         _notifyIcon.Text = tooltip.Length <= 63 ? tooltip : tooltip[..63];
 
-        // The icon shows only the percentage, so it is redrawn only when that changes.
-        if (shownPercent != _currentIconPercent)
-        {
-            var nextIcon = TrayIconRenderer.Create(shownPercent, reading.ReceiverConnected, reading.MouseOnline);
-            var oldIcon = _currentIcon;
-            _currentIcon = nextIcon;
-            _currentIconPercent = shownPercent;
-            _notifyIcon.Icon = nextIcon;
-            oldIcon?.Dispose();
-        }
+        _iconPercent = shownPercent;
+        UpdateIcon();
 
-        if (reading.MouseOnline && shownPercent is <= 20 && !_lowBatteryNotified)
+        if (_lowBattery.ShouldNotify(shownPercent, reading.MouseOnline))
         {
+            AppLog.Info($"Low battery notification at {shownPercent}%");
             _notifyIcon.ShowBalloonTip(5_000, "AJ179 PRO", $"Низкий заряд: {shownPercent}%", ToolTipIcon.Warning);
-            _lowBatteryNotified = true;
         }
-        else if (shownPercent is > 25)
+    }
+
+    /// <summary>Redraws the tray icon only when the percentage, icon size or taskbar theme changed.</summary>
+    private void UpdateIcon()
+    {
+        var key = (_iconPercent, TrayIconRenderer.CurrentSize, TaskbarTheme.IsLight());
+        if (_currentIcon is not null && key == _iconKey) return;
+        var nextIcon = TrayIconRenderer.Create(key.Item1, key.Item2, key.Item3);
+        var oldIcon = _currentIcon;
+        _currentIcon = nextIcon;
+        _iconKey = key;
+        _notifyIcon.Icon = nextIcon;
+        oldIcon?.Dispose();
+    }
+
+    private void OnUserPreferenceChanged(object? sender, Microsoft.Win32.UserPreferenceChangedEventArgs e)
+    {
+        // Light/dark mode switches arrive as General; DPI and icon metrics as Desktop/Icon.
+        if (e.Category is Microsoft.Win32.UserPreferenceCategory.General
+            or Microsoft.Win32.UserPreferenceCategory.Desktop
+            or Microsoft.Win32.UserPreferenceCategory.Icon)
         {
-            _lowBatteryNotified = false;
+            Post(UpdateIcon);
         }
+    }
+
+    private ToolStripMenuItem CreateLowBatteryMenu()
+    {
+        var root = new ToolStripMenuItem("Предупреждать о низком заряде");
+        root.DropDownItems.Add(CreateThresholdItem("Не предупреждать", 0));
+        root.DropDownItems.Add(new ToolStripSeparator());
+        foreach (var value in AppSettings.LowBatteryChoices)
+        {
+            root.DropDownItems.Add(CreateThresholdItem($"При {value}% и ниже", value));
+        }
+        root.DropDownOpening += (_, _) =>
+        {
+            foreach (var item in root.DropDownItems.OfType<ToolStripMenuItem>())
+            {
+                item.Checked = (int)item.Tag! == _settings.LowBatteryThreshold;
+            }
+        };
+        return root;
+    }
+
+    private ToolStripMenuItem CreateThresholdItem(string text, int threshold)
+    {
+        var item = new ToolStripMenuItem(text) { Tag = threshold };
+        item.Click += (_, _) => SetLowBatteryThreshold(threshold);
+        return item;
+    }
+
+    private void SetLowBatteryThreshold(int threshold)
+    {
+        if (threshold == _settings.LowBatteryThreshold) return;
+        var next = _settings with { LowBatteryThreshold = threshold };
+        try
+        {
+            next.Save();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AppLog.Error("Settings save failed", ex);
+            MessageBox.Show($"Не удалось сохранить настройки:\n{ex.Message}", "AJ179 Battery Tray",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        _settings = next;
+        _lowBattery.ChangeThreshold(threshold);
+        AppLog.Info($"Low battery threshold set to {(threshold == 0 ? "off" : threshold + "%")}");
     }
 
     private static void TryRepairAutostart()
@@ -340,6 +402,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         // Static events would otherwise keep this context alive and call into disposed controls.
         HidSharp.DeviceList.Local.Changed -= _deviceListChanged;
         Microsoft.Win32.SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+        Microsoft.Win32.SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
         _panel.Dispose();
         _timer.Stop();
         _timer.Dispose();

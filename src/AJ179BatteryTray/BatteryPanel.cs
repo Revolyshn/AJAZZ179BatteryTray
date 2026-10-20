@@ -8,6 +8,7 @@ internal sealed class BatteryPanel : Form
     private readonly Image _art;
     private readonly GlassButton _refresh;
     private readonly GlassButton _close;
+    private readonly Dictionary<(float Size, FontStyle Style), Font> _fonts = new();
     private BatteryReading _reading = BatteryReading.Disconnected("Ожидание первого опроса");
     private int? _percent;
     private DateTime? _checkedAt;
@@ -252,9 +253,8 @@ internal sealed class BatteryPanel : Form
         var detail = _percent.HasValue
             ? (_reading.MouseOnline ? "Автообновление каждые 5 секунд." : "Показан последний заряд.\nРазбудите мышь для обновления.")
             : (_reading.ReceiverConnected ? "Пошевелите мышью в режиме 2.4G.\nОжидаем ответ приёмника." : "Подключите приёмник и включите мышь.\nЗаряд проверится автоматически.");
-        using (var font = AppFonts.Create(8.5f))
         using (var brush = new SolidBrush(Color.FromArgb(193, 197, 207)))
-            g.DrawString(detail, font, brush, new RectangleF(26, 434, 347, 44));
+            g.DrawString(detail, GetFont(8.5f, FontStyle.Regular), brush, new RectangleF(26, 434, 347, 44));
         Label(g, _busy ? "Обновление…" : _checkedAt.HasValue ? $"Проверено {_checkedAt:HH:mm:ss}  ·  5 с" : "Ожидание первого опроса", 26, 480, 7.5f, FontStyle.Regular, 163);
         Label(g, "AJ179 / SILVER EDITION", 26, 569, 7, FontStyle.Regular, 145);
         Label(g, "ESC · ЗАКРЫТЬ", 278, 569, 7, FontStyle.Regular, 145);
@@ -264,11 +264,21 @@ internal sealed class BatteryPanel : Form
         _reading.Percent is null ? (_percent.HasValue ? "Ожидание обновления" : "Заряд пока неизвестен") :
         _reading.MouseOnline ? "Мышь на связи" : "Мышь спит";
 
-    private static void Label(Graphics g, string text, float x, float y, float size, FontStyle style, int brightness = 244)
+    private void Label(Graphics g, string text, float x, float y, float size, FontStyle style, int brightness = 244)
     {
-        using var font = AppFonts.Create(size, style);
         using var brush = new SolidBrush(Color.FromArgb(brightness, brightness, Math.Min(255, brightness + 4)));
-        g.DrawString(text, font, brush, x, y);
+        g.DrawString(text, GetFont(size, style), brush, x, y);
+    }
+
+    // The panel repaints often while open; reuse the handful of fonts it needs instead of creating one per label.
+    private Font GetFont(float size, FontStyle style)
+    {
+        if (!_fonts.TryGetValue((size, style), out var font))
+        {
+            font = AppFonts.Create(size, style);
+            _fonts[(size, style)] = font;
+        }
+        return font;
     }
 
     private static void GlassCard(Graphics g, RectangleF bounds)
@@ -290,7 +300,12 @@ internal sealed class BatteryPanel : Form
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { _art.Dispose(); _refresh.Font.Dispose(); _close.Font.Dispose(); }
+        if (disposing)
+        {
+            _art.Dispose(); _refresh.Font.Dispose(); _close.Font.Dispose();
+            foreach (var font in _fonts.Values) font.Dispose();
+            _fonts.Clear();
+        }
         base.Dispose(disposing);
     }
 }
