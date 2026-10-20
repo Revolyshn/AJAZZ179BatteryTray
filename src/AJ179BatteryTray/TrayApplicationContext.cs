@@ -215,13 +215,14 @@ internal sealed class TrayApplicationContext : ApplicationContext
             && previous.ReceiverConnected == next.ReceiverConnected
             && previous.MouseOnline == next.MouseOnline
             && previous.Percent == next.Percent
+            && previous.Charging == next.Charging
             && previous.Detail == next.Detail)
         {
             return;
         }
         _firstReadingLogged = true;
         AppLog.Info($"Receiver={(next.ReceiverConnected ? "on" : "off")} Mouse={(next.MouseOnline ? "online" : "offline")} " +
-            $"Percent={next.Percent?.ToString() ?? "-"} Rev={next.FirmwareRevision} Detail=\"{next.Detail}\"");
+            $"Percent={next.Percent?.ToString() ?? "-"} Cable={(next.Charging ? "yes" : "no")} Rev={next.FirmwareRevision} Detail=\"{next.Detail}\"");
     }
 
     private void ApplyReading(BatteryReading reading)
@@ -234,20 +235,14 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
 
         var shownPercent = reading.Percent ?? (reading.ReceiverConnected ? _lastKnownPercent : null);
-        var suffix = reading.Percent is null && shownPercent is not null ? " (последнее)" : string.Empty;
-        _statusItem.Text = shownPercent is null
-            ? $"AJ179 PRO: {(reading.ReceiverConnected ? "нет данных" : "не подключена")}"
-            : $"AJ179 PRO: {shownPercent}%{suffix}";
-
-        var tooltip = shownPercent is null
-            ? $"AJ179 PRO: {(reading.ReceiverConnected ? "пошевелите мышь" : "приёмник не найден")}"
-            : $"AJ179 PRO: {shownPercent}%{suffix}";
-        _notifyIcon.Text = tooltip.Length <= 63 ? tooltip : tooltip[..63];
+        _statusItem.Text = TrayText.Menu(reading, shownPercent);
+        _notifyIcon.Text = TrayText.Tooltip(reading, shownPercent);
 
         _iconPercent = shownPercent;
         UpdateIcon();
 
-        if (_lowBattery.ShouldNotify(shownPercent, reading.MouseOnline))
+        // No low-battery warning while the mouse is on the cable: it is already charging.
+        if (_lowBattery.ShouldNotify(shownPercent, reading.MouseOnline && !reading.Charging))
         {
             AppLog.Info($"Low battery notification at {shownPercent}%");
             _notifyIcon.ShowBalloonTip(5_000, "AJ179 PRO", $"Низкий заряд: {shownPercent}%", ToolTipIcon.Warning);

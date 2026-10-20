@@ -236,7 +236,8 @@ internal sealed class BatteryPanel : Form
 
         GlassCard(g, new RectangleF(24, 289, 352, 99));
         Label(g, StatusText(), 40, 303, 10, FontStyle.Bold);
-        Label(g, _reading.Percent is null && _percent.HasValue ? "Последнее известное значение" : "AJ179 PRO / 2.4G", 40, 328, 8, FontStyle.Regular, 180);
+        var connection = _reading.Charging ? "AJ179 PRO / USB-кабель" : "AJ179 PRO / 2.4G";
+        Label(g, _reading.Percent is null && _percent.HasValue ? "Последнее известное значение" : connection, 40, 328, 8, FontStyle.Regular, 180);
         var track = new RectangleF(40, 359, 320, 9);
         using var trackPath = Round(track, track.Height / 2);
         using var trackBrush = new SolidBrush(Color.FromArgb(110, 9, 10, 14));
@@ -257,7 +258,8 @@ internal sealed class BatteryPanel : Form
         Label(g, "ESC · ЗАКРЫТЬ", 278, FooterTop, 7, FontStyle.Regular, 145);
     }
 
-    private string StatusText() => !_reading.ReceiverConnected ? "Приёмник не подключён" :
+    private string StatusText() => _reading.Charging ? "Заряжается по кабелю" :
+        !_reading.ReceiverConnected ? "Приёмник не подключён" :
         _reading.Percent is null ? (_percent.HasValue ? "Ожидание обновления" : "Заряд пока неизвестен") :
         _reading.MouseOnline ? "Мышь на связи" : "Мышь спит";
 

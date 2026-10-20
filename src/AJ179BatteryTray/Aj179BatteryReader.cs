@@ -12,25 +12,45 @@ internal sealed class Aj179BatteryReader
 
     private static BatteryReading Read()
     {
-        HidDevice? device;
+        List<(HidDevice Device, bool Wired)> devices;
         try
         {
-            device = DeviceList.Local.GetHidDevices(VendorId)
+            devices = DeviceList.Local.GetHidDevices(VendorId)
                 .Where(d => SupportedProductIds.Contains(d.ProductID))
                 .Where(d => d.GetMaxFeatureReportLength() >= BatteryProtocol.ReportLength)
-                .OrderByDescending(IsExactAj179Pro)
-                .FirstOrDefault();
+                .Select(d => (d, IsWiredMouse(d)))
+                .ToList();
         }
         catch (Exception ex)
         {
             return BatteryReading.Disconnected($"Ошибка поиска HID: {ex.Message}");
         }
 
-        if (device is null)
+        if (devices.Count == 0)
         {
             return BatteryReading.Disconnected();
         }
 
+        var charging = devices.Any(d => d.Wired);
+        BatteryReading? fallback = null;
+        foreach (var (device, _) in OrderForPolling(devices, d => d.Wired))
+        {
+            var reading = Poll(device) with { Charging = charging };
+            if (reading.Percent is not null) return reading;
+            fallback ??= reading;
+        }
+        return fallback!;
+    }
+
+    /// <summary>
+    /// Receivers first: over the cable the mouse itself has not answered the status poll
+    /// in testing, while a receiver plugged in at the same time still may.
+    /// </summary>
+    internal static IEnumerable<T> OrderForPolling<T>(IEnumerable<T> devices, Func<T, bool> isWired) =>
+        devices.OrderBy(isWired);
+
+    private static BatteryReading Poll(HidDevice device)
+    {
         var revision = device.ReleaseNumber.ToString();
         if (!device.TryOpen(out var stream))
         {
@@ -67,7 +87,11 @@ internal sealed class Aj179BatteryReader
         }
     }
 
-    private static bool IsExactAj179Pro(HidDevice device)
+    /// <summary>
+    /// The receiver reports itself as "AJAZZ 2.4G 8K"; the mouse connected by cable reports
+    /// "AJAZZ AJ179 PRO" (PID 0x4026, revision 3.3).
+    /// </summary>
+    private static bool IsWiredMouse(HidDevice device)
     {
         try
         {
