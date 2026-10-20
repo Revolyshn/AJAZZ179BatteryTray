@@ -5,7 +5,7 @@ namespace AJ179BatteryTray.Tests;
 public class AutostartManagerTests
 {
     private const string Current = @"D:\soft\AJ179BatteryTray\AJ179BatteryTray.exe";
-    private const string Old = @"C:\Users\me\Documents\Codex\outputs\AJ179BatteryTray\AJ179BatteryTray.exe";
+    private const string Old = @"C:\Users\me\Downloads\old\AJ179BatteryTray\AJ179BatteryTray.exe";
 
     [Theory]
     [InlineData(null)]
