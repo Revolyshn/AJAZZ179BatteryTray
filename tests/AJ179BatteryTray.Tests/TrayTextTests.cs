@@ -4,8 +4,8 @@ namespace AJ179BatteryTray.Tests;
 
 public class TrayTextTests
 {
-    private static BatteryReading Reading(int? percent, bool receiver = true, bool online = true, bool charging = false) =>
-        new(receiver, online, percent, "3.0", "test", charging);
+    private static BatteryReading Reading(int? percent, bool receiver = true, bool online = true, bool onCable = false) =>
+        new(receiver, online, percent, "3.0", "test", onCable);
 
     [Fact]
     public void ShowsLivePercent() =>
@@ -16,13 +16,13 @@ public class TrayTextTests
         Assert.Equal("AJ179 PRO: 87% (последнее)", TrayText.Tooltip(Reading(null), 87));
 
     [Fact]
-    public void MarksChargingWithLastKnownPercent() =>
-        Assert.Equal("AJ179 PRO: 87% (последнее) · заряжается",
-            TrayText.Tooltip(Reading(null, online: false, charging: true), 87));
+    public void MarksCableWithLastKnownPercent() =>
+        Assert.Equal("AJ179 PRO: 87% (последнее) · по кабелю",
+            TrayText.Tooltip(Reading(null, online: false, onCable: true), 87));
 
     [Fact]
-    public void ChargingWithoutAnyPercent() =>
-        Assert.Equal("AJ179 PRO: заряжается", TrayText.Menu(Reading(null, charging: true), null));
+    public void CableWithoutAnyPercent() =>
+        Assert.Equal("AJ179 PRO: по кабелю", TrayText.Menu(Reading(null, onCable: true), null));
 
     [Theory]
     [InlineData(true, "AJ179 PRO: пошевелите мышь")]
@@ -38,7 +38,7 @@ public class TrayTextTests
 
     [Fact]
     public void LongestTooltipFitsTheWindowsLimit() =>
-        Assert.True(TrayText.Tooltip(Reading(null, charging: true), 100).Length <= TrayText.TooltipLimit);
+        Assert.True(TrayText.Tooltip(Reading(null, onCable: true), 100).Length <= TrayText.TooltipLimit);
 }
 
 public class ReaderOrderTests

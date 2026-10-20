@@ -215,14 +215,14 @@ internal sealed class TrayApplicationContext : ApplicationContext
             && previous.ReceiverConnected == next.ReceiverConnected
             && previous.MouseOnline == next.MouseOnline
             && previous.Percent == next.Percent
-            && previous.Charging == next.Charging
+            && previous.OnCable == next.OnCable
             && previous.Detail == next.Detail)
         {
             return;
         }
         _firstReadingLogged = true;
         AppLog.Info($"Receiver={(next.ReceiverConnected ? "on" : "off")} Mouse={(next.MouseOnline ? "online" : "offline")} " +
-            $"Percent={next.Percent?.ToString() ?? "-"} Cable={(next.Charging ? "yes" : "no")} Rev={next.FirmwareRevision} Detail=\"{next.Detail}\"");
+            $"Percent={next.Percent?.ToString() ?? "-"} Cable={(next.OnCable ? "yes" : "no")} Rev={next.FirmwareRevision} Detail=\"{next.Detail}\"");
     }
 
     private void ApplyReading(BatteryReading reading)
@@ -241,8 +241,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _iconPercent = shownPercent;
         UpdateIcon();
 
-        // No low-battery warning while the mouse is on the cable: it is already charging.
-        if (_lowBattery.ShouldNotify(shownPercent, reading.MouseOnline && !reading.Charging))
+        // No low-battery warning while the mouse is on the cable: it is powered over USB.
+        if (_lowBattery.ShouldNotify(shownPercent, reading.MouseOnline && !reading.OnCable))
         {
             AppLog.Info($"Low battery notification at {shownPercent}%");
             _notifyIcon.ShowBalloonTip(5_000, "AJ179 PRO", $"Низкий заряд: {shownPercent}%", ToolTipIcon.Warning);

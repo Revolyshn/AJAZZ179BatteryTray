@@ -220,24 +220,30 @@ internal sealed class BatteryPanel : Form
         Label(g, "AJ179 PRO", 24, 88, 22, FontStyle.Bold);
         Label(g, "WIRELESS / BATTERY", 26, 128, 8, FontStyle.Regular, 180);
 
-        var number = _percent?.ToString() ?? "—";
+        // Unknown charge is "--", placed on the same baseline as real digits (aligned by the
+        // top of a reference "0"), so it sits where the number would be instead of floating.
+        var number = _percent?.ToString() ?? "--";
         using (var digits = new GraphicsPath())
+        using (var reference = new GraphicsPath())
         {
             digits.AddString(number, AppFonts.Family, (int)FontStyle.Bold, 80, PointF.Empty, StringFormat.GenericTypographic);
+            reference.AddString("0", AppFonts.Family, (int)FontStyle.Bold, 80, PointF.Empty, StringFormat.GenericTypographic);
             var bounds = digits.GetBounds();
             using var move = new Matrix();
-            move.Translate(26-bounds.Left, 168-bounds.Top + (_percent.HasValue ? 0 : (62-bounds.Height)/2));
+            move.Translate(26-bounds.Left, 168-reference.GetBounds().Top);
             digits.Transform(move);
             using var silver = new LinearGradientBrush(new RectangleF(24,168,250,68),Color.White,Color.FromArgb(183,183,183),90f);
             g.FillPath(silver,digits);
-            Label(g, _percent.HasValue ? "%" : "", 26+bounds.Width+14, 194, 22, FontStyle.Regular, 210);
+            Label(g, "%", 26+bounds.Width+14, 194, 22, FontStyle.Regular, 210);
         }
         Label(g, "УРОВЕНЬ ЗАРЯДА", 26, 249, 8, FontStyle.Regular, 185);
 
         GlassCard(g, new RectangleF(24, 289, 352, 99));
         Label(g, StatusText(), 40, 303, 10, FontStyle.Bold);
-        var connection = _reading.Charging ? "AJ179 PRO / USB-кабель" : "AJ179 PRO / 2.4G";
-        Label(g, _reading.Percent is null && _percent.HasValue ? "Последнее известное значение" : connection, 40, 328, 8, FontStyle.Regular, 180);
+        var subline = _reading.Percent is not null ? (_reading.OnCable ? "AJ179 PRO / USB-кабель" : "AJ179 PRO / 2.4G")
+            : _percent.HasValue ? "Последнее известное значение"
+            : _reading.OnCable ? "По кабелю заряд не передаётся" : "AJ179 PRO / 2.4G";
+        Label(g, subline, 40, 328, 8, FontStyle.Regular, 180);
         var track = new RectangleF(40, 359, 320, 9);
         using var trackPath = Round(track, track.Height / 2);
         using var trackBrush = new SolidBrush(Color.FromArgb(110, 9, 10, 14));
@@ -258,7 +264,7 @@ internal sealed class BatteryPanel : Form
         Label(g, "ESC · ЗАКРЫТЬ", 278, FooterTop, 7, FontStyle.Regular, 145);
     }
 
-    private string StatusText() => _reading.Charging ? "Заряжается по кабелю" :
+    private string StatusText() => _reading.OnCable ? "Подключена по кабелю" :
         !_reading.ReceiverConnected ? "Приёмник не подключён" :
         _reading.Percent is null ? (_percent.HasValue ? "Ожидание обновления" : "Заряд пока неизвестен") :
         _reading.MouseOnline ? "Мышь на связи" : "Мышь спит";

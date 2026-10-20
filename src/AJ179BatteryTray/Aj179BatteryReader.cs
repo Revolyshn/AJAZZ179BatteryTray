@@ -31,11 +31,11 @@ internal sealed class Aj179BatteryReader
             return BatteryReading.Disconnected();
         }
 
-        var charging = devices.Any(d => d.Wired);
+        var onCable = devices.Any(d => d.Wired);
         BatteryReading? fallback = null;
         foreach (var (device, _) in OrderForPolling(devices, d => d.Wired))
         {
-            var reading = Poll(device) with { Charging = charging };
+            var reading = Poll(device) with { OnCable = onCable };
             if (reading.Percent is not null) return reading;
             fallback ??= reading;
         }

@@ -18,11 +18,11 @@ internal static class TrayText
     {
         if (shownPercent is null)
         {
-            return reading.Charging ? "AJ179 PRO: заряжается" : $"AJ179 PRO: {noData}";
+            return reading.OnCable ? "AJ179 PRO: по кабелю" : $"AJ179 PRO: {noData}";
         }
 
         var stale = reading.Percent is null ? " (последнее)" : string.Empty;
-        var charging = reading.Charging ? " · заряжается" : string.Empty;
-        return $"AJ179 PRO: {shownPercent}%{stale}{charging}";
+        var onCable = reading.OnCable ? " · по кабелю" : string.Empty;
+        return $"AJ179 PRO: {shownPercent}%{stale}{onCable}";
     }
 }
